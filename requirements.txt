@@ -1,4 +1,5 @@
 ipykernel
+streamlit
 
 numpy
 opencv-python
