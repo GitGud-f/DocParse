@@ -68,16 +68,21 @@ def process_document_phase1(image_path, output_dir=None):
     print("Step 2: Performing Illumination Normalization...")
     illum_start_time = time.time()
     
+    clahe_clip = cfg['illumination']['clahe']['clip_limit']
+    clahe_grid = tuple(cfg['illumination']['clahe']['tile_grid_size'])
+    thresh_block = cfg['illumination']['adaptive_threshold']['block_size']
+    thresh_c = cfg['illumination']['adaptive_threshold']['c']
+    
     # Apply CLAHE for contrast enhancement
     warped_gray = cv2.cvtColor(warped_image, cv2.COLOR_BGR2GRAY)
-    enhanced_gray = clahe_equalization(warped_gray)
-    show_image("CLAHE Enhanced Grayscale", enhanced_gray, wait_time=0)
-    save_image(enhanced_gray, os.path.join(output_dir, f"{os.path.basename(image_path).split('.')[0]}_clahe.jpg"))
+    enhanced_gray = clahe_equalization(warped_gray, clip_limit=clahe_clip, tile_grid_size=clahe_grid)
+    show_image("Enhanced Grayscale (for DL)", enhanced_gray, wait_time=0)
+    save_image(enhanced_gray, os.path.join(output_dir, f"{os.path.basename(image_path).split('.')[0]}_enhanced_gray.jpg"))
 
     # Apply adaptive thresholding for binarization (often good for OCR)
     # Adjust block_size and c based on image characteristics
-    binarized_image = adaptive_thresholding(enhanced_gray, block_size=15, c=4)
-    show_image("Binarized Image (Adaptive Thresholding)", binarized_image, wait_time=0)
+    binarized_image = adaptive_thresholding(enhanced_gray, block_size=thresh_block, c=thresh_c)
+    show_image("Binarized Image (for OCR)", binarized_image, wait_time=0)
     save_image(binarized_image, os.path.join(output_dir, f"{os.path.basename(image_path).split('.')[0]}_binarized.jpg"))
 
     illum_end_time = log_elapsed_time(illum_start_time, "Illumination Normalization")

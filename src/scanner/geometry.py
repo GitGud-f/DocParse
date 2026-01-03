@@ -7,7 +7,10 @@ Includes corner detection and perspective transformation.
 
 Functions:
     - order_points: Orders four points in a consistent manner.
+    - get_projection_dimensions: Calculates projected width and height.
     - four_point_transform: Applies perspective transform to get a top-down view.   
+    - auto_canny: Computes Canny thresholds dynamically.
+    - get_edges: Generates edges using a hybrid approach (Grayscale + Saturation Channel).
     - detect_document_corners: Robustly detects document corners using morphological operations.
 """
 
@@ -95,9 +98,61 @@ def four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
 
     return warped
 
+def auto_canny(image: np.ndarray, sigma: float = 0.33) -> np.ndarray:
+    """
+    Computes Canny thresholds dynamically based on median image intensity.
+    This is more robust than hardcoded thresholds.
+    Args:
+        image: The input grayscale image.
+        sigma: The standard deviation factor for threshold calculation.
+    Returns:
+        The edges detected by the Canny algorithm.
+    """
+    v = np.median(image)
+    lower = int(max(0, (1.0 - sigma) * v))
+    upper = int(min(255, (1.0 + sigma) * v))
+    return cv2.Canny(image, lower, upper)
+
+def get_edges(image: np.ndarray, c_geo: dict) -> np.ndarray:
+    """
+    Generates edges using a hybrid approach (Grayscale + Saturation Channel).
+    Args:
+        image: The input color image.
+        c_geo: Configuration dictionary for geometry parameters.
+    Returns:
+        A binary image containing the combined edges.
+    """
+
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+    
+    blurred_gray = cv2.GaussianBlur(gray, tuple(c_geo['gaussian_blur']['ksize']), c_geo['gaussian_blur']['sigma'])
+    
+    if c_geo['canny']['threshold1'] > 0:
+        edges_gray = cv2.Canny(blurred_gray, c_geo['canny']['threshold1'], c_geo['canny']['threshold2'])
+    else:
+        edges_gray = auto_canny(blurred_gray)
+
+
+    edges_sat = np.zeros_like(edges_gray)
+    if len(image.shape) == 3:
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        sat_channel = hsv[:, :, 1] 
+        
+        blurred_sat = cv2.GaussianBlur(sat_channel, (7, 7), 0)
+        
+
+        edges_sat = cv2.Canny(blurred_sat, 50, 150)
+
+    combined_edges = cv2.bitwise_or(edges_gray, edges_sat)
+    
+    return combined_edges
+
 def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarray:
     """
-    Detects the four corners of a document in the image using contour detection
+    Detects the four corners of a document in the image using multi-channel contour detection
     and morphological operations. Refines corner positions to sub-pixel accuracy.
     
     Args:
@@ -116,21 +171,12 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
     ratio = h / process_height
     small_image = imutils.resize(image, height=process_height)
 
-    if len(small_image.shape) == 3:
-        gray = cv2.cvtColor(small_image, cv2.COLOR_BGR2GRAY)
-    else:
-        gray = small_image
-        
-    blurred = cv2.GaussianBlur(gray, tuple(c_geo['gaussian_blur']['ksize']), c_geo['gaussian_blur']['sigma'])
-    
-    edged = cv2.Canny(blurred, c_geo['canny']['threshold1'], c_geo['canny']['threshold2'])
-
+    edged = get_edges(small_image, c_geo)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, tuple(c_geo['morphology']['kernel_size']))
     closed = cv2.morphologyEx(edged, cv2.MORPH_CLOSE, kernel, iterations=c_geo['morphology']['close_iterations'])
     dilated = cv2.dilate(closed, kernel, iterations=c_geo['morphology']['dilate_iterations'])
 
-    # 2. Find Contours
     cnts = cv2.findContours(dilated.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     cnts = imutils.grab_contours(cnts)
     
@@ -140,6 +186,8 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
     best_corners = None
     best_score = -1
     TARGET_AR = c_geo['contours']['target_ar']
+    
+    total_area_pixels = small_image.shape[0] * small_image.shape[1]
     
     for c in cnts:
         peri = cv2.arcLength(c, True)
@@ -154,7 +202,7 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
             ar_diff = abs(current_ar - TARGET_AR)
             
             area = cv2.contourArea(c)
-            norm_area = area / (small_image.shape[0] * small_image.shape[1])
+            norm_area = area / total_area_pixels
             
             if norm_area < c_geo['contours']['min_area_ratio']: continue
                 

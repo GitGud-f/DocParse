@@ -14,8 +14,8 @@ geometry:
       ksize: [5, 5]
       sigma: 0
     canny:
-      threshold1: 75
-      threshold2: 200
+      threshold1: 0
+      threshold2: 0
     morphology:
       kernel_size: [5, 5]
       close_iterations: 2
