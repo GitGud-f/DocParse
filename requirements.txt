@@ -10,3 +10,6 @@ pyyaml
 
 torch
 torchvision
+ultralytics
+
+shapely

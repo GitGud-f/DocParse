@@ -47,9 +47,9 @@ wheels/
 # Ignore large datasets to prevent repo bloat
 data/raw/*
 data/processed/*
+data/benchmark/*
+data/output/*
 
-# Ignore inference outputs
-data/outputs/*
 
 
 # ----------------------
