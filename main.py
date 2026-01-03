@@ -8,11 +8,14 @@ import time
 from src.scanner.geometry import detect_document_corners, four_point_transform
 from src.scanner.filters import adaptive_thresholding, clahe_equalization, preprocess_image
 from src.utils.image_utils import show_image, save_image, log_elapsed_time
+from src.utils.config import cfg 
 
-def process_document_phase1(image_path, output_dir="data/output/phase1_processed"):
+
+def process_document_phase1(image_path, output_dir=None):
     """
     Executes Phase I: Geometric & Illumination Preprocessing for a single image.
     """
+    if output_dir is None: output_dir = cfg['paths']['processed_data']
     print(f"\n--- Starting Phase I for: {image_path} ---")
     start_time = time.time()
 
@@ -99,8 +102,8 @@ def process_document_phase1(image_path, output_dir="data/output/phase1_processed
 
 if __name__ == "__main__":
     # --- Configuration ---
-    RAW_IMAGES_DIR = "data/raw"
-    PHASE1_OUTPUT_DIR = "data/processed/phase1" # Renamed from 'output' for clarity
+    RAW_IMAGES_DIR = cfg['paths']['raw_data']
+    PHASE1_OUTPUT_DIR = cfg['paths']['processed_data']
     
     # Create dummy raw data if it doesn't exist
     os.makedirs(RAW_IMAGES_DIR, exist_ok=True)

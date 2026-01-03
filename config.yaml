@@ -1,0 +1,66 @@
+# config.yaml
+
+paths:
+  raw_data: "data/raw"
+  processed_data: "data/processed/phase1"
+  output_data: "data/output"
+
+preprocessing:
+  resize_height: 800  # Height to resize image to during processing (keeps aspect ratio)
+
+geometry:
+  blob_method:
+    gaussian_blur:
+      ksize: [5, 5]
+      sigma: 0
+    canny:
+      threshold1: 75
+      threshold2: 200
+    morphology:
+      kernel_size: [5, 5]
+      close_iterations: 2
+      dilate_iterations: 1
+    contours:
+      max_candidates: 10
+      epsilon_factor: 0.02 # Multiplier for arcLength
+      min_area_ratio: 0.05 # Minimum area relative to image size
+      target_ar: 1.414     # A4 Aspect Ratio
+      ar_tolerance_low: 1.1
+      ar_tolerance_high: 2.0
+    subpixel_refinement:
+      window_size: [11, 11]
+      zero_zone: [-1, -1]
+      max_iterations: 40
+      epsilon: 0.001
+
+  hough_method:
+    mask_generation:
+      blur_ksize: [11, 11]
+      otsu_white_ratio_upper: 0.95
+      otsu_white_ratio_lower: 0.05
+      adaptive_block_size: 21
+      adaptive_c: 10
+      morph_ksize: [7, 7]
+      morph_iterations: 5
+    canny:
+      threshold1: 50
+      threshold2: 150
+      aperture_size: 3
+    hough_lines:
+      rho: 1
+      theta_resolution: 1 # In degrees, converted to radians in code
+      threshold: 60
+    clustering:
+      min_rho_diff: 20
+      min_theta_diff_deg: 10
+      parallel_threshold_deg: 20
+      perpendicular_threshold_deg_low: 70
+      perpendicular_threshold_deg_high: 110
+
+illumination:
+  clahe:
+    clip_limit: 2.0
+    tile_grid_size: [8, 8]
+  adaptive_threshold:
+    block_size: 15 # Must be odd
+    c: 4
