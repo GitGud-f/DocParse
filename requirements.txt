@@ -12,4 +12,6 @@ torch
 torchvision
 ultralytics
 
-shapely
+shapely 
+pytesseract 
+python-Levenshtein
