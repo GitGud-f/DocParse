@@ -12,7 +12,7 @@ geometry:
   blob_method:
     gaussian_blur:
       ksize: [5, 5]
-      sigma: 0
+      sigma: 3
     canny:
       threshold1: 0
       threshold2: 0
@@ -106,3 +106,14 @@ segmentation:
     batch_size: 16
     img_size: 640
     conf_threshold: 0.5
+
+ocr:
+  tesseract_cmd: "" # Leave empty for Linux/Mac. For Windows: "C:/Program Files/Tesseract-OCR/tesseract.exe"
+  padding: 10       # Pixels to expand the bounding box
+  lang: "eng"       # Languages (eng, ara, etc.)
+  save_crops: True  # Save cropped images of tables/figures to disk
+  
+  # Define how to handle specific classes
+  actions:
+    ocr: ["Text", "Title", "Section-header", "Page-header", "Page-footer", "List-item", "Caption", "Footnote"]
+    image: ["Table", "Picture", "Formula"]

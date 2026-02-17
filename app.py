@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import os
 import imutils
+import shutil
 import pandas as pd
 from PIL import Image
 
@@ -12,11 +13,20 @@ from src.utils.config import cfg
 
 # --- New Import for Phase II ---
 # Wrap in try-except to prevent app crash if Phase II isn't fully set up yet
+PHASE2_AVAILABLE = False
+OCR_AVAILABLE = False
+
 try:
     from src.segmentation.inference import LayoutAnalyzer
     PHASE2_AVAILABLE = True
 except ImportError:
-    PHASE2_AVAILABLE = False
+    pass
+
+try:
+    from src.ocr.engine import OCREngine
+    OCR_AVAILABLE = True
+except ImportError:
+    pass
 
 # --- Page Configuration ---
 st.set_page_config(page_title="DocParse | HIAST", page_icon="📄", layout="wide", initial_sidebar_state="expanded")
@@ -54,12 +64,29 @@ def load_layout_model():
     except Exception as e:
         st.error(f"Failed to load Phase II Model: {e}")
         return None
+    
+@st.cache_resource
+def load_ocr_engine():
+    if not OCR_AVAILABLE: return None
+    try:
+        return OCREngine()
+    except Exception as e:
+        st.error(f"Failed to load OCR Engine: {e}")
+        return None
 
 # --- Main ---
 def main():
     st.title("📄 Intelligent Document Reconstruction")
     st.caption("Computer Vision Course Project - HIAST | Phases I & II")
 
+    # --- Session State Management ---
+    if 'layout_elements' not in st.session_state:
+        st.session_state['layout_elements'] = None
+    if 'ocr_results' not in st.session_state:
+        st.session_state['ocr_results'] = None
+    if 'processed_image_hash' not in st.session_state:
+        st.session_state['processed_image_hash'] = None
+        
     # --- Sidebar ---
     st.sidebar.header("🔧 Settings")
     method = st.sidebar.radio("Detection Method:", ("Classical Contours (Blob)", "Hough Lines (Geometric)"))
@@ -88,6 +115,12 @@ def main():
             image = load_image_from_upload(up)
             if st.sidebar.button("Save to data/raw"): save_uploaded_file(up)
 
+    if image is not None:
+        current_hash = hash(image.tobytes())
+        if st.session_state['processed_image_hash'] != current_hash:
+            st.session_state['layout_elements'] = None
+            st.session_state['ocr_results'] = None
+            st.session_state['processed_image_hash'] = current_hash
     # --- Main Logic ---
     if image is not None:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -211,40 +244,79 @@ def main():
                         
                     if analyzer:
                             # 1. Predict
-                        elements = analyzer.predict(warped)
-                            
-                            # 2. Visualize
-                        vis_layout = analyzer.visualize(warped, elements)
+                        st.session_state['layout_elements'] = analyzer.predict(warped)
+                        st.session_state['layout_elements']
+                        
+            if st.session_state['layout_elements']:
+                elements = st.session_state['layout_elements']
+                analyzer = load_layout_model()
+                vis_layout = analyzer.visualize(warped, elements)
                             
                             # 3. Display
-                        l_col1, l_col2 = st.columns([2, 1])
+                l_col1, l_col2 = st.columns([2, 1])
+                l_col1.image(cv2.cvtColor(vis_layout, cv2.COLOR_BGR2RGB), caption="Semantic Segmentation")
                             
-                        with l_col1:
-                            st.image(cv2.cvtColor(vis_layout, cv2.COLOR_BGR2RGB), 
-                                    caption="YOLOv8 Segmentation Result")
-                                         
-                        with l_col2:
-                            st.markdown('<div class="success-box">', unsafe_allow_html=True)
-                            st.markdown(f"**Detected Elements: {len(elements)}**")
-                                
-                                # Prepare data for table
-                            table_data = []
-                            for idx, el in enumerate(elements):
-                                table_data.append({
-                                        "ID": idx + 1,
-                                        "Label": el['label'],
-                                        "Conf": f"{el['confidence']:.2f}",
-                                        "Position (Y)": int(el['bbox'][1]) # Sort visualizer
-                                    })
-                                
-                            if table_data:
-                                df = pd.DataFrame(table_data)
-                                st.dataframe(df, hide_index=True)
-                            else:
-                                st.info("No layout elements detected.")
-                                    
-                            st.caption("Elements are sorted by reading order (Top-Down).")
-                            st.markdown('</div>', unsafe_allow_html=True)
+                with l_col2:
+                    df = pd.DataFrame([{
+                        "ID": i, "Label": e['label'], "Conf": f"{e['confidence']:.2f}"
+                    } for i, e in enumerate(elements)])
+                    st.dataframe(df, height=300, hide_index=True)
 
+        st.divider()
+        st.markdown('<p class="header-style">5. Phase III: Content Extraction (OCR)</p>', unsafe_allow_html=True)
+
+        if not OCR_AVAILABLE:
+            st.warning("OCR Engine (Tesseract) not found or not configured.")
+        elif st.session_state['layout_elements'] is None:
+            st.info("⚠️ Please run Phase II first to detect regions.")
+        else:
+            if st.button("📝 Extract Text & Data (Phase III)"):
+                with st.spinner("Running Hybrid OCR Extraction..."):
+                    ocr = load_ocr_engine()
+                    
+                    # Create temp output for crops
+                    temp_output = os.path.join("data", "output", "streamlit_temp")
+                    if os.path.exists(temp_output): shutil.rmtree(temp_output)
+                    
+                    # Run Pipeline
+                    st.session_state['ocr_results'] = ocr.process_layout(
+                        color_image=warped,           # For Images/Tables
+                        binary_image=binarized,       # For Text (Better Accuracy)
+                        layout_elements=st.session_state['layout_elements'],
+                        output_dir=temp_output
+                    )
+
+            # Display Results
+            if st.session_state['ocr_results']:
+                results = st.session_state['ocr_results']
+                st.success(f"Successfully extracted {len(results)} elements.")
+
+                for item in results:
+                    with st.container():
+                        c_img, c_txt = st.columns([1, 3])
+                        
+                        # Left: Visual Crop
+                        x1, y1, x2, y2 = item['bbox']
+                        # Crop on the fly for display to ensure it matches
+                        if item['type'] == 'text':
+                            # Show binary crop for text (what the OCR saw)
+                            display_crop = binarized[y1:y2, x1:x2]
+                            caption = "Binary Input (OCR)"
+                        else:
+                            # Show color crop for visuals
+                            display_crop = cv2.cvtColor(warped[y1:y2, x1:x2], cv2.COLOR_BGR2RGB)
+                            caption = "Color Crop"
+                            
+                        c_img.image(display_crop, caption=caption, width=150)
+                        
+                        # Right: Content
+                        with c_txt:
+                            st.markdown(f"**ID {item['id']}: {item['label']}** ({item['confidence']:.2f})")
+                            if item['type'] == 'text':
+                                st.text_area("Extracted Text:", value=item['content'], height=100, key=f"txt_{item['id']}")
+                            else:
+                                st.info(f"🖼️ Image saved at: `{item['content']}`")
+                        
+                        st.markdown("---")
 if __name__ == "__main__":
     main()

@@ -162,6 +162,31 @@ def get_four_corners_from_contour(cnt):
     
     return np.array([tl, tr, br, bl], dtype="float32")
 
+def force_4_corners(pts: np.ndarray) -> np.ndarray:
+    """
+    Forces a contour with > 4 points to be exactly 4 points 
+    by finding the extreme top-left, top-right, bottom-right, and bottom-left.
+    """
+    # Reshape to list of (x, y)
+    pts = pts.reshape(-1, 2)
+    
+    # Initialize result array
+    rect = np.zeros((4, 2), dtype="float32")
+
+    # Top-left has the smallest sum (x+y)
+    # Bottom-right has the largest sum (x+y)
+    s = pts.sum(axis=1)
+    rect[0] = pts[np.argmin(s)]
+    rect[2] = pts[np.argmax(s)]
+
+    # Top-right has the smallest difference (y-x) or (x-y) depending on convention,
+    # but usually: Top-right has smallest (diff), Bottom-left has largest (diff)
+    diff = np.diff(pts, axis=1)
+    rect[1] = pts[np.argmin(diff)]
+    rect[3] = pts[np.argmax(diff)]
+
+    # Return as (4, 1, 2) to match contour shape format if needed, or (4, 2)
+    return rect.reshape(4, 2)
 
 def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarray:
     """
@@ -206,33 +231,47 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, c_geo['contours']['epsilon_factor'] * peri, True)
 
-        if len(approx) == 4 and cv2.isContourConvex(approx):
-            pts = approx.reshape(4, 2)
-        elif len(approx) > 4:
-            pts = get_four_corners_from_contour(c)
+
+        candidate_pts = None
+        
+        # Case A: Perfect 4 corners
+        if len(approx) == 4:
+            candidate_pts = approx.reshape(4, 2)
             
-        if(pts.any()):  
-            w_proj, h_proj = get_projection_dimensions(pts)
-            if w_proj == 0 or h_proj == 0: continue
+        # Case B: > 4 corners (Blur caused 5 or 6 points, or paper is curled)
+        # We allow up to ~8 points, then force them down to 4
+        elif 4 < len(approx) <= 8: 
+            candidate_pts = force_4_corners(approx)
             
-            current_ar = max(w_proj, h_proj) / min(w_proj, h_proj)
-            ar_diff = abs(current_ar - TARGET_AR)
+        # If we didn't find a valid 4-point candidate, skip
+        if candidate_pts is None:
+            continue
             
-            area = cv2.contourArea(c)
-            norm_area = area / total_area_pixels
+        # Check Convexity (only if original approx was 4, otherwise our forced rect is always convex-ish)
+        if len(approx) == 4 and not cv2.isContourConvex(approx):
+            continue
+        
+        w_proj, h_proj = get_projection_dimensions(candidate_pts)
+        if w_proj == 0 or h_proj == 0: continue
             
-            if norm_area < c_geo['contours']['min_area_ratio']: continue
+        current_ar = max(w_proj, h_proj) / min(w_proj, h_proj)
+        ar_diff = abs(current_ar - TARGET_AR)
+            
+        area = cv2.contourArea(c)
+        norm_area = area / total_area_pixels
+            
+        if norm_area < c_geo['contours']['min_area_ratio']: continue
                 
-            if c_geo['contours']['ar_tolerance_low'] or current_ar > c_geo['contours']['ar_tolerance_high']: 
-                score_penalty = 0.5
-            else: 
-                score_penalty = 0
+        if c_geo['contours']['ar_tolerance_low'] or current_ar > c_geo['contours']['ar_tolerance_high']: 
+            score_penalty = 0.5
+        else: 
+            score_penalty = 0
             
-            score = (0.7 * norm_area) + (0.3 * (1 - ar_diff)) - score_penalty
+        score = (0.7 * norm_area) + (0.3 * (1 - ar_diff)) - score_penalty
             
-            if score > best_score:
-                best_score = score
-                best_corners = approx
+        if score > best_score:
+            best_score = score
+            best_corners = candidate_pts
 
     if best_corners is None: return None
 
@@ -256,6 +295,10 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
     
     refined_corners = best_corners.reshape(-1, 1, 2)
     
-    refined_corners = cv2.cornerSubPix(orig_gray, refined_corners, win_size, zero_zone, criteria)
+    try:
+        refined_corners = cv2.cornerSubPix(orig_gray, refined_corners, win_size, zero_zone, criteria)
+    except Exception as e:
+        print(f"SubPix failed: {e}. Returning unrefined corners.")
+        return best_corners.reshape(4, 2)
 
     return refined_corners.reshape(4, 2)

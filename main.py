@@ -9,7 +9,8 @@ from src.scanner.geometry import detect_document_corners, four_point_transform
 from src.scanner.filters import adaptive_thresholding, clahe_equalization, preprocess_image
 from src.utils.image_utils import show_image, save_image, log_elapsed_time
 from src.utils.config import cfg 
-
+from src.ocr.engine import OCREngine
+from src.segmentation.inference import LayoutAnalyzer
 
 def process_document_phase1(image_path, output_dir=None):
     """
