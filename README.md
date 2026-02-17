@@ -31,7 +31,7 @@ Taking a photo of a document is easy; making it useful is hard. Smartphone photo
 ## 📂 Project Structure
 
 ```text
-DocuStruct-CV/
+DocParse/
 ├── config.yaml             # Central configuration for thresholds & paths
 ├── app.py                  # Streamlit Dashboard (UI)
 ├── main.py                 # CLI Entry point for batch processing

@@ -39,31 +39,33 @@ def process_document_phase1(image_path, output_dir=None):
     gray_original = cv2.cvtColor(original_image, cv2.COLOR_BGR2GRAY)
     
     # Find corners
-    corners = detect_document_corners(original_image, debug=True)
+    try:
+        corners = detect_document_corners(original_image)
+    except Exception as e:
+        print(f"Warning: Detection crashed with error {e}. Proceeding with fallback.")
+        corners = None
     
-    if corners is None:
-        print("Could not detect document corners. Skipping perspective transform.")
-        warped_image = original_image # Use original if corners not found
-        # You might want to save the original image in the processed dir as a fallback
-        save_image(warped_image, os.path.join(output_dir, f"{os.path.basename(image_path).split('.')[0]}_fallback.jpg"))
-        geo_end_time = log_elapsed_time(geo_start_time, "Geometric Correction (Fallback)")
-        
-        # Proceed to illumination with original image if no corners
-        processed_image = warped_image
-    else:
-        # Draw corners for visualization
+    if corners is not None:
+        print("Corners detected. Applying perspective transform.")
+        # Draw corners for debug saving
         corner_image = original_image.copy()
-        for pt in corners:
-            cv2.circle(corner_image, tuple(pt.astype(int)), 5, (0, 0, 255), -1)
-        show_image("Detected Corners", corner_image, wait_time=0)
+        cv2.drawContours(corner_image, [corners.astype(int)], -1, (0, 255, 0), 3)
         save_image(corner_image, os.path.join(output_dir, f"{os.path.basename(image_path).split('.')[0]}_corners.jpg"))
 
-        # Perform perspective transform
+        # Apply Transform
         warped_image = four_point_transform(original_image, corners)
-        show_image("Warped Image (Geometric Correction)", warped_image, wait_time=0)
-        save_image(warped_image, os.path.join(output_dir, f"{os.path.basename(image_path).split('.')[0]}_warped.jpg"))
-        geo_end_time = log_elapsed_time(geo_start_time, "Geometric Correction")
-    
+    else:
+        # --- FALLBACK HANDLING ---
+        print("⚠️ Warning: Document corners not found.") 
+        print("-> Fallback: Using original image as 'warped' image.")
+        print("-> Assumption: User has manually cropped the image or background is minimal.")
+        
+        # We use the original image, but we might want to resize it if it's massive 
+        # (optional, depending on your OCR speed requirements)
+        warped_image = original_image.copy()
+
+    geo_end_time = log_elapsed_time(geo_start_time, "Geometric Correction (Or Fallback)")
+       
     # --- Illumination Normalization ---
     print("Step 2: Performing Illumination Normalization...")
     illum_start_time = time.time()

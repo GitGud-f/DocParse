@@ -64,3 +64,45 @@ illumination:
   adaptive_threshold:
     block_size: 29 # Must be odd
     c: 15
+
+segmentation:
+  dataset:
+    repo_id: "pierreguillou/DocLayNet-small" 
+    training_dir: "data/training_doclaynet"
+    limit_train: 8000
+    limit_val: 800
+    
+    id_mapping: 
+      0: 0  # Caption
+      1: 1  # Footnote
+      2: 2  # Formula
+      3: 3  # List-item
+      4: 4  # Page-footer
+      5: 5  # Page-header
+      6: 6  # Picture
+      7: 7  # Section-header
+      8: 8  # Table
+      9: 9  # Text
+      10: 10 # Title
+    
+    class_names: [
+      "Caption", 
+      "Footnote", 
+      "Formula", 
+      "List-item", 
+      "Page-footer", 
+      "Page-header", 
+      "Picture", 
+      "Section-header", 
+      "Table", 
+      "Text", 
+      "Title"
+    ]
+
+  model:
+    name: "yolov8s.pt" 
+    weights: "models/checkpoints/best_layout_small.pt" 
+    epochs: 50
+    batch_size: 16
+    img_size: 640
+    conf_threshold: 0.5

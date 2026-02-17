@@ -1,16 +1,18 @@
 ipykernel
 streamlit
 
-numpy
+numpy<2.0
 opencv-python
 
 matplotlib
 tqdm                
 pyyaml
+imutils
 
 torch
 torchvision
 ultralytics
+datasets
 
 shapely 
 pytesseract 

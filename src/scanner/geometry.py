@@ -150,6 +150,19 @@ def get_edges(image: np.ndarray, c_geo: dict) -> np.ndarray:
     
     return combined_edges
 
+def get_four_corners_from_contour(cnt):
+    pts = cnt.reshape(-1, 2)
+    s = pts.sum(axis=1)
+    d = np.diff(pts, axis=1)
+
+    tl = pts[np.argmin(s)]
+    br = pts[np.argmax(s)]
+    tr = pts[np.argmin(d)]
+    bl = pts[np.argmax(d)]
+    
+    return np.array([tl, tr, br, bl], dtype="float32")
+
+
 def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarray:
     """
     Detects the four corners of a document in the image using multi-channel contour detection
@@ -195,6 +208,10 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
 
         if len(approx) == 4 and cv2.isContourConvex(approx):
             pts = approx.reshape(4, 2)
+        elif len(approx) > 4:
+            pts = get_four_corners_from_contour(c)
+            
+        if(pts.any()):  
             w_proj, h_proj = get_projection_dimensions(pts)
             if w_proj == 0 or h_proj == 0: continue
             
