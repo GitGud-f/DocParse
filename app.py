@@ -15,6 +15,7 @@ from src.utils.config import cfg
 # Wrap in try-except to prevent app crash if Phase II isn't fully set up yet
 PHASE2_AVAILABLE = False
 OCR_AVAILABLE = False
+PDF_AVAILABLE = False
 
 try:
     from src.segmentation.inference import LayoutAnalyzer
@@ -25,6 +26,12 @@ except ImportError:
 try:
     from src.ocr.engine import OCREngine
     OCR_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    from src.synthesis.pdf_builder import PDFReconstructor
+    PDF_AVAILABLE = True
 except ImportError:
     pass
 
@@ -318,5 +325,52 @@ def main():
                                 st.info(f"🖼️ Image saved at: `{item['content']}`")
                         
                         st.markdown("---")
+                        
+        # --- 6. Phase IV: Synthesis ---
+    st.divider()
+    st.markdown('<p class="header-style">6. Phase IV: Final Reconstruction</p>', unsafe_allow_html=True)
+    
+
+
+    if not PDF_AVAILABLE:
+        st.warning("PDF Builder module not found.")
+    elif st.session_state['ocr_results'] is None:
+        st.info("Run Phase III first to generate data for the PDF.")
+    else:
+        col_pdf1, col_pdf2 = st.columns([2, 1])
+        
+        with col_pdf1:
+            st.markdown("""
+            This step maps the extracted content onto a new A4 canvas, 
+            matching the original positions and font styles.
+            """)
+        
+        with col_pdf2:
+            if st.button("📄 Generate PDF"):
+                with st.spinner("Synthesizing Document..."):
+                    builder = PDFReconstructor()
+                    
+                    # Define Output Path
+                    pdf_filename = "reconstructed_doc.pdf"
+                    pdf_path = os.path.join("data", "output", pdf_filename)
+                    
+                    # Generate
+                    builder.generate(
+                        original_image_shape=warped.shape,
+                        layout_data=st.session_state['ocr_results'],
+                        output_path=pdf_path
+                    )
+                    
+                    # Read file for download button
+                    with open(pdf_path, "rb") as f:
+                        pdf_bytes = f.read()
+                        
+                    st.success("PDF Created!")
+                    st.download_button(
+                        label="⬇️ Download PDF",
+                        data=pdf_bytes,
+                        file_name=pdf_filename,
+                        mime="application/pdf"
+                    )
 if __name__ == "__main__":
     main()

@@ -39,7 +39,7 @@ class LayoutAnalyzer:
         """
         Run inference and return elements sorted for Arabic reading order.
         """
-        results = self.model(image, conf=self.conf_threshold, verbose=False)[0]
+        results = self.model(image, imgsz=1280, conf=self.conf_threshold, verbose=False)[0]
         layout_elements = []
         
         h, w = image.shape[:2]

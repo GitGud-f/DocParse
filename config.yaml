@@ -100,8 +100,8 @@ segmentation:
     ]
 
   model:
-    name: "yolov8s.pt" 
-    weights: "models/checkpoints/best_layout_small.pt" 
+    name: "yolov8m.pt" 
+    weights: "models/checkpoints/best_layout_48.pt" 
     epochs: 50
     batch_size: 16
     img_size: 640
@@ -117,3 +117,36 @@ ocr:
   actions:
     ocr: ["Text", "Title", "Section-header", "Page-header", "Page-footer", "List-item", "Caption", "Footnote"]
     image: ["Table", "Picture", "Formula"]
+
+synthesis:
+  output_dir: "data/output"
+  pdf_format: "A4" # 210x297 mm
+  font: "DejaVu" 
+  font_path: "assets/fonts/DejaVuSans.ttf" # Path to your downloaded file
+  
+  # Map YOLO labels to PDF Font Styles (Size in pt, Style: 'B'=Bold, ''=Regular)
+  styles:
+    Title: 
+      size: 24
+      style: "B"
+    Section-header: 
+      size: 16
+      style: "B"
+    Page-header: 
+      size: 10
+      style: "I"
+    Page-footer: 
+      size: 10
+      style: "I"
+    Caption: 
+      size: 10
+      style: "I"
+    Text: 
+      size: 11
+      style: ""
+    List-item: 
+      size: 11
+      style: ""
+    Footnote: 
+      size: 8
+      style: ""
