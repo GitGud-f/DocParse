@@ -11,7 +11,9 @@ Functions:
     - four_point_transform: Applies perspective transform to get a top-down view.   
     - auto_canny: Computes Canny thresholds dynamically.
     - get_edges: Generates edges using a hybrid approach (Grayscale + Saturation Channel).
+    - force_4_corners: Forces a contour with > 4 points to be exactly 4 points.
     - detect_document_corners: Robustly detects document corners using morphological operations.
+    - deskew_text_lines: Corrects slight skew of text lines in a rectified image.
 """
 
 import cv2
@@ -150,42 +152,30 @@ def get_edges(image: np.ndarray, c_geo: dict) -> np.ndarray:
     
     return combined_edges
 
-def get_four_corners_from_contour(cnt):
-    pts = cnt.reshape(-1, 2)
-    s = pts.sum(axis=1)
-    d = np.diff(pts, axis=1)
-
-    tl = pts[np.argmin(s)]
-    br = pts[np.argmax(s)]
-    tr = pts[np.argmin(d)]
-    bl = pts[np.argmax(d)]
-    
-    return np.array([tl, tr, br, bl], dtype="float32")
-
 def force_4_corners(pts: np.ndarray) -> np.ndarray:
     """
     Forces a contour with > 4 points to be exactly 4 points 
     by finding the extreme top-left, top-right, bottom-right, and bottom-left.
+    
+    Args:        
+        pts: A contour represented as a NumPy array of shape (N, 1, 2) where N > 4.
+        
+    Returns:        
+        A NumPy array of shape (4, 2) containing the four corners in the order: top-left, top-right, bottom-right, bottom-left.
     """
     # Reshape to list of (x, y)
     pts = pts.reshape(-1, 2)
     
-    # Initialize result array
     rect = np.zeros((4, 2), dtype="float32")
 
-    # Top-left has the smallest sum (x+y)
-    # Bottom-right has the largest sum (x+y)
     s = pts.sum(axis=1)
     rect[0] = pts[np.argmin(s)]
     rect[2] = pts[np.argmax(s)]
 
-    # Top-right has the smallest difference (y-x) or (x-y) depending on convention,
-    # but usually: Top-right has smallest (diff), Bottom-left has largest (diff)
     diff = np.diff(pts, axis=1)
     rect[1] = pts[np.argmin(diff)]
     rect[3] = pts[np.argmax(diff)]
 
-    # Return as (4, 1, 2) to match contour shape format if needed, or (4, 2)
     return rect.reshape(4, 2)
 
 def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarray:
@@ -238,16 +228,14 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
         if len(approx) == 4:
             candidate_pts = approx.reshape(4, 2)
             
-        # Case B: > 4 corners (Blur caused 5 or 6 points, or paper is curled)
-        # We allow up to ~8 points, then force them down to 4
+        # Case B: > 4 corners 
         elif 4 < len(approx) <= 8: 
             candidate_pts = force_4_corners(approx)
             
         # If we didn't find a valid 4-point candidate, skip
         if candidate_pts is None:
             continue
-            
-        # Check Convexity (only if original approx was 4, otherwise our forced rect is always convex-ish)
+        
         if len(approx) == 4 and not cv2.isContourConvex(approx):
             continue
         
@@ -286,7 +274,6 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
 
     c_sub = c_geo['subpixel_refinement']
     
-    # Criteria: Stop after 40 iterations or if corner moves less than 0.001 pixel
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, c_sub['max_iterations'], c_sub['epsilon'])
     
 
@@ -302,3 +289,58 @@ def detect_document_corners(image: np.ndarray, debug: bool = False) -> np.ndarra
         return best_corners.reshape(4, 2)
 
     return refined_corners.reshape(4, 2)
+
+def deskew_text_lines(image: np.ndarray) -> np.ndarray:
+    """
+    Corrects slight skew of text lines in a rectified image.
+    Uses a projection profile or contour angle method.
+    
+    Args:
+        image: The input image (ideally already perspective-corrected).
+        
+    Returns:
+        The deskewed image.
+    """
+    
+    if len(image.shape) == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image
+        
+    thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (20, 1))
+    dilated = cv2.dilate(thresh, kernel, iterations=1)
+
+    cnts, _ = cv2.findContours(dilated, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+    angles = []
+    for c in cnts:
+        if cv2.contourArea(c) < 500: 
+            continue
+            
+        angle = cv2.minAreaRect(c)[-1]
+        
+        if angle < -45:
+            angle = -(90 + angle)
+        else:
+            angle = -angle
+            
+        if -10 < angle < 10:
+            angles.append(angle)
+
+    if not angles:
+        return image
+
+    angle_to_rotate = np.median(angles)
+    
+    if abs(angle_to_rotate) > 0.2:
+        (h, w) = image.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle_to_rotate, 1.0)
+        
+        rotated = cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_CONSTANT, borderValue=(255, 255, 255))
+        print(f"  -> Deskewed by {angle_to_rotate:.2f} degrees")
+        return rotated
+    
+    return image

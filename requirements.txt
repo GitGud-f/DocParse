@@ -1,5 +1,6 @@
 ipykernel
 streamlit
+streamlit_drawable_canvas
 
 numpy<2.0
 opencv-python
