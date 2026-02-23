@@ -341,14 +341,38 @@ def main():
                         
                     c_img.image(display_crop, caption=caption, width=150)
                     with c_txt:
-                        st.markdown(f"**ID {item['id']}: {item['label']}** ({item['confidence']:.2f})")
+                        st.markdown(f"**ID {item['id']}: {item['label']}** *(Conf: {item['confidence']:.2f})*")
                         if item['type'] == 'text':
-                            st.text_area("Extracted Text:", value=item['content'], height=100, key=f"txt_{item['id']}")
+                            st.text_area("Extracted & Corrected Text:", value=item['content'], height=100, key=f"txt_{item['id']}")
+                            
+                        elif item['type'] == 'table':
+                            st.info(f"🖼️ Image saved at: `{item['content']}`")
+                            if item.get('table_data') and len(item['table_data']) > 1:
+                                st.success("✅ Table Structure Parsed Successfully!")
+                                
+                                # --- SAFE DATAFRAME CREATION ---
+                                raw_headers = item['table_data'][0]
+                                safe_headers = []
+                                # Make sure headers are unique and not empty
+                                for c_idx, h in enumerate(raw_headers):
+                                    h_clean = str(h).strip()
+                                    if not h_clean:
+                                        h_clean = f"Col_{c_idx+1}"
+                                    # Handle duplicates (e.g., two columns named "Value")
+                                    if h_clean in safe_headers:
+                                        h_clean = f"{h_clean}_{c_idx+1}"
+                                    safe_headers.append(h_clean)
+                                
+                                df = pd.DataFrame(item['table_data'][1:], columns=safe_headers)
+                                st.dataframe(df, use_container_width=True)
+                            else:
+                                st.warning("⚠️ Borderless or complex table detected. Defaulting to hidden text fallback.")
+                                if item.get('hidden_text'):
+                                    st.text(item['hidden_text'])
                         else:
                             st.info(f"🖼️ Image saved at: `{item['content']}`")
                             if item.get('hidden_text'):
-                                with st.expander("🔍 Show Hidden Searchable Text (For PDF Embed)"):
-                                    st.caption("This text will be embedded invisibly behind the image in the final PDF to make it searchable.")
+                                with st.expander("🔍 Show Hidden Searchable Text"):
                                     st.text(item['hidden_text'])
                     st.markdown("---")
 

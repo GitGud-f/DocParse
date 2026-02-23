@@ -6,7 +6,7 @@ paths:
   output_data: "data/output"
 
 preprocessing:
-  resize_height: 800  # Height to resize image to during processing (keeps aspect ratio)
+  resize_height: 1024  # Height to resize image to during processing (keeps aspect ratio)
 
 geometry:
   blob_method:
@@ -101,14 +101,14 @@ ocr:
   
   preprocessing:
     min_height_for_ocr: 45   # Minimum pixel height for reliable OCR
-    upscale_factor: 2.0      # Multiplier if crop is too small
+    upscale_factor: 3.0    # Multiplier if crop is too small
   
   postprocessing:
     enable_spellcheck: True 
   # Define how to handle specific classes
   actions:
     ocr: ["Text", "Title", "Section-header", "Page-header", "Page-footer", "List-item", "Caption", "Footnote"]
-    image: ["Table", "Picture", "Formula"]
+    image: ["Picture", "Formula"]
 
 synthesis:
   output_dir: "data/output"

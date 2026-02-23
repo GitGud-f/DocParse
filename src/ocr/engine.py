@@ -11,7 +11,9 @@ import pytesseract
 import json
 import os
 import re
+
 from src.utils.config import cfg
+from src.ocr.table_parser import TableParser
 
 try:
     from spellchecker import SpellChecker
@@ -159,7 +161,42 @@ class OCREngine:
                 except Exception as e:
                     print(f"OCR Error on element {i} ({label}): {e}")
 
-
+            elif label == "Table":
+                content_type = "table"
+                crop_color, padded_bbox = self.get_padded_crop(color_image, bbox)
+                crop_bin, _ = self.get_padded_crop(binary_image, bbox)
+                
+                # 1. Save visual representation for the final PDF
+                filename = f"element_{i:03d}_{label}.jpg"
+                file_path = os.path.join(output_dir, filename)
+                cv2.imwrite(file_path, crop_color)
+                content = file_path 
+                
+                # 2. Try to parse the table grid
+                parser = TableParser(tesseract_config=custom_config, lang=self.lang)
+                
+                # Callback function to handle cell OCR logic
+                def cell_ocr_callback(cell_img):
+                    upscaled = self.upscale_crop_if_needed(cell_img)
+                    # PSM 6 or 7 is best for single cells
+                    cell_config = self.get_tesseract_config("Text") 
+                    raw_text = pytesseract.image_to_string(upscaled, config=cell_config, lang=self.lang)
+                    return self.clean_text(raw_text, "Text")
+                
+                table_data = parser.parse(crop_color, crop_bin, cell_ocr_callback, table_id=f"table_{i}")
+                
+                # If grid parsing fails (e.g., borderless table), fallback to hidden text
+                if not table_data:
+                    crop_bin_hidden = self.upscale_crop_if_needed(crop_bin)
+                    try:
+                        raw_hidden = pytesseract.image_to_string(crop_bin_hidden, config=custom_config, lang=self.lang)
+                        hidden_text = self.clean_text(raw_hidden, label)
+                    except Exception as e:
+                        pass
+                else:
+                    # Convert parsed 2D array into a formatted hidden string for the PDF later
+                    hidden_text = "\n".join(["\t".join(row) for row in table_data])
+                    
             elif label in self.image_classes:
                 content_type = "image"
                 crop_color, padded_bbox = self.get_padded_crop(color_image, bbox)
@@ -191,6 +228,7 @@ class OCREngine:
                 "bbox": padded_bbox,
                 "content": content,
                 "hidden_text": hidden_text, 
+                "table_data": table_data if label == "Table" else None, # NEW
                 "confidence": conf
             }
             processed_data.append(item)
