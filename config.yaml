@@ -71,41 +71,27 @@ segmentation:
     training_dir: "data/training_doclaynet"
     limit_train: 8000
     limit_val: 800
-    
-    id_mapping: 
-      0: 0  # Caption
-      1: 1  # Footnote
-      2: 2  # Formula
-      3: 3  # List-item
-      4: 4  # Page-footer
-      5: 5  # Page-header
-      6: 6  # Picture
-      7: 7  # Section-header
-      8: 8  # Table
-      9: 9  # Text
-      10: 10 # Title
+  
     
     class_names: [
-      "Caption", 
-      "Footnote", 
-      "Formula", 
-      "List-item", 
-      "Page-footer", 
-      "Page-header", 
-      "Picture", 
-      "Section-header", 
-      "Table", 
-      "Text", 
-      "Title"
+      "Title",           # 0
+      "Text",            # 1
+      "Abandon",         # 2 (Background/Noise)
+      "Figure",          # 3
+      "Figure-caption",  # 4
+      "Table",           # 5
+      "Table-caption",   # 6
+      "Table-footnote",  # 7
+      "Formula",         # 8
+      "Formula-caption"  # 9
     ]
 
   model:
-    name: "yolov8m.pt" 
-    weights: "models/checkpoints/best_layout_48.pt" 
+    weights: "models/checkpoints/doclayout_yolo_docstructbench_imgsz1024.pt" 
     epochs: 50
     batch_size: 16
-    img_size: 640
-    conf_threshold: 0.5
+    img_size: 1280
+    conf_threshold: 0.4
 
 ocr:
   tesseract_cmd: "" # Leave empty for Linux/Mac. For Windows: "C:/Program Files/Tesseract-OCR/tesseract.exe"

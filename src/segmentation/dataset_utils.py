@@ -1,9 +1,16 @@
 
 """
 Module: dataset_utils
+
 Description:
     Utilities for downloading and formatting the DocLayNet-small dataset
     from HuggingFace into YOLOv8 format.
+    
+Fuctions:
+    - convert_to_yolo_bbox: Converts COCO bbox format to YOLO format.
+    - save_yolo_label: Saves bounding boxes and categories into a YOLO .txt file.
+    - prepare_publaynet: Main function to download, convert, and save the dataset
+      along with generating the dataset.yaml configuration file for YOLOv8 training.
 """
 
 import os
@@ -17,9 +24,18 @@ from src.utils.config import cfg
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-def convert_to_yolo_bbox(bbox, img_width, img_height):
+def convert_to_yolo_bbox(bbox: list, img_width: int, img_height: int) -> list:
     """
-    Converts COCO bbox [x_min, y_min, w, h] to YOLO [x_center, y_center, w_norm, h_norm]
+    Converts a bounding box from COCO format [x_min, y_min, width, height]
+    to YOLO format [x_center, y_center, width, height], normalized by image dimensions.
+    
+    Args:
+        bbox: List of [x_min, y_min, width, height]
+        img_width: Width of the image
+        img_height: Height of the image
+        
+    Returns:
+        List of [x_center, y_center, width, height] in YOLO format
     """
     x_min, y_min, w, h = bbox
 
@@ -30,29 +46,28 @@ def convert_to_yolo_bbox(bbox, img_width, img_height):
 
     return [x_center, y_center, w_norm, h_norm]
 
-def save_yolo_label(bboxes, categories, img_width, img_height, label_path, mapping):
+def save_yolo_label(bboxes: list, categories: list, img_width: int, img_height: int, label_path: str, mapping: dict):
     """
     Parses DocLayNet parallel lists and writes a YOLO format .txt file.
+    
     Args:
         bboxes: List of [x,y,w,h]
         categories: List of int IDs
+        img_width: Width of the image
+        img_height: Height of the image
+        label_path: Path to save the .txt file
         mapping: Dict mapping source ID to target ID
     """
     yolo_lines = []
-
-    # Iterate through the parallel lists
+    
     for bbox, cat_id in zip(bboxes, categories):
-
-        # Skip if category is not in our mapping (e.g. Footnotes, Formulas)
         if cat_id not in mapping:
             continue
 
         yolo_id = mapping[cat_id]
 
-        # Calculate normalized coordinates
         x_c, y_c, w, h = convert_to_yolo_bbox(bbox, img_width, img_height)
 
-        # Clip values to 0-1 range
         x_c, y_c = max(0.0, min(1.0, x_c)), max(0.0, min(1.0, y_c))
         w, h = max(0.0, min(1.0, w)), max(0.0, min(1.0, h))
 
@@ -61,14 +76,12 @@ def save_yolo_label(bboxes, categories, img_width, img_height, label_path, mappi
     with open(label_path, 'w') as f:
         f.write('\n'.join(yolo_lines))
 
-def prepare_publaynet():
-    # NOTE: Function name kept same for compatibility, but it processes DocLayNet now
+def prepare_doclaynet():
     c_seg = cfg['segmentation']['dataset']
     output_dir = c_seg['training_dir']
 
-    logger.info(f"--- Starting DocLayNet-small Download & Conversion ---")
+    logger.info(f"--- Starting DocLayNet Download & Conversion ---")
 
-    # Load dataset (Non-streaming is fine for 'small' version, it's ~1GB)
     try:
         ds = load_dataset(c_seg['repo_id'])
     except Exception as e:
@@ -92,7 +105,6 @@ def prepare_publaynet():
         os.makedirs(img_dir, exist_ok=True)
         os.makedirs(lbl_dir, exist_ok=True)
 
-        # TQDM progress bar
         pbar = tqdm(total=min(len(dataset_obj), limit), desc=f"Processing {split_name}")
 
         for i, sample in enumerate(dataset_obj):
@@ -100,26 +112,22 @@ def prepare_publaynet():
                 break
 
             try:
-                # 1. Process Image
                 image = sample['image']
                 if image.mode != "RGB":
                     image = image.convert("RGB")
 
                 img_w, img_h = image.size
 
-                # 2. Get Annotations (DocLayNet structure: bboxes_block, categories)
                 bboxes = sample.get('bboxes_block', [])
                 cats = sample.get('categories', [])
 
                 if not bboxes:
                     continue
 
-                # 3. Save Image
                 file_name = f"{split_name}_{i:06d}"
                 image_path = os.path.join(img_dir, f"{file_name}.jpg")
                 image.save(image_path, "JPEG")
 
-                # 4. Save Label
                 label_path = os.path.join(lbl_dir, f"{file_name}.txt")
                 save_yolo_label(bboxes, cats, img_w, img_h, label_path, mapping)
 
@@ -131,7 +139,6 @@ def prepare_publaynet():
 
         pbar.close()
 
-    # --- Generate dataset.yaml for YOLO ---
     abs_root = os.path.abspath(output_dir)
 
     yaml_content = {
@@ -148,4 +155,4 @@ def prepare_publaynet():
     logger.info(f"✅ Dataset preparation complete. Config saved to: {yaml_path}")
 
 if __name__ == "__main__":
-    prepare_publaynet()
+    prepare_doclaynet()

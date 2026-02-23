@@ -1,45 +1,121 @@
 """
 Module: inference
+
 Description: 
-    Loads the trained YOLOv8 Layout model and performs inference.
-    - Supports all 11 DocLayNet classes.
-    - Implements Arabic-friendly sorting (Top-to-Bottom, Right-to-Left).
+    Handles the inference pipeline for the YOLOv8 Semantic Layout Segmentation model.
+    It loads the trained model, runs predictions on input images, and sorts the detected elements
+    in natural reading order (Top-Down, Left-Right) to accommodate mixed single/multi-column layouts.
+    
+    `LayoutAnalyzer` class encapsulates the model loading, prediction, and visualization logic.
 """
 
 import cv2
 import numpy as np
 import logging
-from ultralytics import YOLO
+from doclayout_yolo import YOLOv10
+
 from src.utils.config import cfg
+from src.segmentation.xycut import RecursiveXYSort 
+
 
 # Setup module-level logger
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class LayoutAnalyzer:
+    """
+    LayoutAnalyzer encapsulates the YOLOv8 model for semantic layout segmentation.
+        - Loads the model with specified weights.
+        - Runs inference to detect layout elements and their bounding boxes.
+        - Sorts detected elements in natural reading order (Top-Down, Left-Right).
+        - Provides visualization of detected elements with class-specific colors and confidence scores.
+    """
     def __init__(self, weights_path=None):
+        """
+        Initializes the LayoutAnalyzer by loading the YOLOv8 model with specified weights.
+        Args:
+            weights_path: Optional path to the model weights. If None, it will use the default path
+                          specified in the configuration or fallback to 'models/weights/best_layout.pt'.
+        """
         if weights_path is None:
             weights_path = cfg['segmentation']['model'].get('weights', 'models/weights/best_layout.pt')
         
-        # Fallback if config returns None
         if not weights_path: 
-             weights_path = 'models/weights/best_layout.pt'
+             weights_path = 'models/weights/doclayout_yolo_docstructbench_imgsz1024.pt'
 
         logger.info(f"Loading Layout Model from: {weights_path}")
         try:
-            self.model = YOLO(weights_path)
+            self.model = YOLOv10(weights_path)
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
             raise e
             
         self.classes = cfg['segmentation']['dataset']['class_names']
         self.conf_threshold = cfg['segmentation']['model']['conf_threshold']
+        self.sorter = RecursiveXYSort()
+        self.ignore_labels = {"Abandon"} 
 
-    def predict(self, image: np.ndarray):
+    def calculate_iou(self, boxA, boxB):
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+        boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+        iou = interArea / float(boxAArea + boxBArea - interArea)
+        return iou
+
+    def clean_detections(self, elements):
         """
-        Run inference and return elements sorted for Arabic reading order.
+        Removes overlapping duplicates or contained boxes of the same class.
         """
-        results = self.model(image, imgsz=1280, conf=self.conf_threshold, verbose=False)[0]
+        valid_indices = set(range(len(elements)))
+        
+        for i in range(len(elements)):
+            if i not in valid_indices: continue
+            
+            for j in range(i + 1, len(elements)):
+                if j not in valid_indices: continue
+                
+                boxA = elements[i]['bbox']
+                boxB = elements[j]['bbox']
+                iou = self.calculate_iou(boxA, boxB)
+                
+                # If high overlap
+                if iou > 0.7: 
+                    # If same class, keep higher confidence
+                    if elements[i]['label'] == elements[j]['label']:
+                        if elements[i]['confidence'] > elements[j]['confidence']:
+                            valid_indices.remove(j)
+                        else:
+                            valid_indices.remove(i)
+                            break 
+                        
+                    elif elements[i]['label'] == 'Text' and elements[j]['label'] in ['Table', 'Figure']:
+                        valid_indices.remove(i)
+                        break
+        
+        return [elements[i] for i in sorted(valid_indices)]
+
+
+    def predict(self, image: np.ndarray) -> list:
+        """
+        Runs inference on the input image and returns a list of detected layout elements
+        with their class labels, bounding boxes, confidence scores, and cropped images.
+        
+        Args:
+            image: Input image as a NumPy array (BGR format)
+            
+        Returns:
+            List of dicts, each containing:
+                - class_id: int
+                - label: str
+                - bbox: [x1, y1, x2, y2]
+                - confidence: float
+                - crop: np.ndarray (cropped image of the detected element)
+        """
+        results = self.model(image, imgsz=1024, conf=self.conf_threshold, verbose=False)[0]
         layout_elements = []
         
         h, w = image.shape[:2]
@@ -48,66 +124,55 @@ class LayoutAnalyzer:
             cls_id = int(box.cls[0])
             conf = float(box.conf[0])
             
-            # Safety check if model predicts a class ID outside our config list
             label = self.classes[cls_id] if cls_id < len(self.classes) else str(cls_id)
             
-            # Extract crop
-            y1_c, y2_c = max(0, y1), min(h, y2)
-            x1_c, x2_c = max(0, x1), min(w, x2)
-            crop = image[y1_c:y2_c, x1_c:x2_c]
+            if label in self.ignore_labels:
+                continue
+                
+            
+            # y1_c, y2_c = max(0, y1), min(h, y2)
+            # x1_c, x2_c = max(0, x1), min(w, x2)
+            # crop = image[y1_c:y2_c, x1_c:x2_c]
             
             element = {
                 "class_id": cls_id,
                 "label": label,
                 "bbox": [x1, y1, x2, y2],
                 "confidence": conf,
-                "crop": crop
+                # "crop": crop
             }
             layout_elements.append(element)
-            
-        sorted_elements = self._sort_reading_order(layout_elements, h, w)
+        
+        cleaned_elements = self.clean_detections(layout_elements)
+          
+        sorted_elements = self.sorter.sort(cleaned_elements, w, h)
         
         return sorted_elements
 
-    def _sort_reading_order(self, elements, image_height, image_width):
-    
-        left_col = []
-        right_col = []
-        mid_x = image_width / 2
-        
-        for el in elements:
-            x1, y1, x2, y2 = el['bbox']
-            center_x = (x1 + x2) / 2
-            
-            # Simple heuristic for 2-column papers
-            if center_x < mid_x: left_col.append(el)
-            else: right_col.append(el)
-            
-        # 2. Sort each column Top-to-Bottom
-        left_col.sort(key=lambda x: x['bbox'][1])
-        right_col.sort(key=lambda x: x['bbox'][1])
-        
-        return left_col + right_col
-
-    def visualize(self, image, elements):
+    def visualize(self, image: np.ndarray, elements: list) -> np.ndarray:
         """
         Draws bounding boxes with specific colors for DocLayNet classes.
+        
+        Args:
+            image: Original image (BGR)
+            elements: List of detected elements with 'bbox', 'label', and 'confidence'
+            
+        Returns:            
+            Image with drawn bounding boxes and labels.
         """
         vis_img = image.copy()
         
-        # Extended Color Palette (BGR) for 11 Classes
         colors = {
-            "Text": (0, 255, 0),           # Green
             "Title": (0, 0, 255),          # Red
-            "Section-header": (0, 69, 255),# Orange-Red
-            "Page-header": (128, 128, 128),# Gray
-            "Page-footer": (128, 128, 128),# Gray
+            "Text": (0, 255, 0),           # Green
+            "Abandon": (128, 128, 128),    # Gray
+            "Figure": (255, 0, 255),       # Magenta
+            "Figure-caption": (0, 215, 255),# Gold
             "Table": (255, 0, 0),          # Blue
-            "Picture": (255, 0, 255),      # Magenta
-            "List-item": (255, 255, 0),    # Cyan
-            "Caption": (0, 215, 255),      # Gold/Yellow
-            "Footnote": (128, 0, 128),     # Purple
-            "Formula": (203, 192, 255)     # Pinkish
+            "Table-caption": (0, 165, 255),# Orange
+            "Table-footnote": (128, 0, 128),# Purple
+            "Formula": (203, 192, 255),    # Pink
+            "Formula-caption": (255, 255, 0)# Cyan
         }
         
         for el in elements:
@@ -115,20 +180,16 @@ class LayoutAnalyzer:
             label = el['label']
             conf = el['confidence']
             
-            # Default to white if label not found in colors
+            
             color = colors.get(label, (255, 255, 255))
             
-            # Draw rectangle
             cv2.rectangle(vis_img, (x1, y1), (x2, y2), color, 2)
             
-            # Draw Label with background for readability
             label_text = f"{label} {conf:.2f}"
             (w, h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
             cv2.rectangle(vis_img, (x1, y1 - 20), (x1 + w, y1), color, -1)
             cv2.putText(vis_img, label_text, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
             
-            # Optional: Draw reading order index
-            # This helps verify your RTL sorting logic
             idx = elements.index(el) + 1
             cv2.circle(vis_img, (x1, y1), 10, (0,0,0), -1)
             cv2.putText(vis_img, str(idx), (x1-4, y1+4), cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255,255,255), 1)
