@@ -99,6 +99,12 @@ ocr:
   lang: "eng"       # Languages (eng, ara, etc.)
   save_crops: True  # Save cropped images of tables/figures to disk
   
+  preprocessing:
+    min_height_for_ocr: 45   # Minimum pixel height for reliable OCR
+    upscale_factor: 2.0      # Multiplier if crop is too small
+  
+  postprocessing:
+    enable_spellcheck: True 
   # Define how to handle specific classes
   actions:
     ocr: ["Text", "Title", "Section-header", "Page-header", "Page-footer", "List-item", "Caption", "Footnote"]

@@ -346,6 +346,10 @@ def main():
                             st.text_area("Extracted Text:", value=item['content'], height=100, key=f"txt_{item['id']}")
                         else:
                             st.info(f"🖼️ Image saved at: `{item['content']}`")
+                            if item.get('hidden_text'):
+                                with st.expander("🔍 Show Hidden Searchable Text (For PDF Embed)"):
+                                    st.caption("This text will be embedded invisibly behind the image in the final PDF to make it searchable.")
+                                    st.text(item['hidden_text'])
                     st.markdown("---")
 
     # 6. Phase IV: Synthesis
