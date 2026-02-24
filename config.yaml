@@ -107,38 +107,24 @@ ocr:
     enable_spellcheck: True 
   # Define how to handle specific classes
   actions:
-    ocr: ["Text", "Title", "Section-header", "Page-header", "Page-footer", "List-item", "Caption", "Footnote"]
+    ocr: ["Text", "Title", "Table-caption", "Table-footnote", "Figure-caption", "Formula-caption"]
     image: ["Picture", "Formula"]
 
 synthesis:
   output_dir: "data/output"
-  pdf_format: "A4" # 210x297 mm
-  font: "DejaVu" 
-  font_path: "assets/fonts/DejaVuSans.ttf" # Path to your downloaded file
+  # Standard A4 Dimensions in Points 
+  page_width: 595.28
+  page_height: 841.89
   
-  # Map YOLO labels to PDF Font Styles (Size in pt, Style: 'B'=Bold, ''=Regular)
+  # Map YOLO labels to PyMuPDF built-in fonts:
+  # 'helv' = Regular, 'hebo' = Bold, 'heit' = Italic, 'hebi' = Bold Italic
   styles:
-    Title: 
-      size: 24
-      style: "B"
-    Section-header: 
-      size: 16
-      style: "B"
-    Page-header: 
-      size: 10
-      style: "I"
-    Page-footer: 
-      size: 10
-      style: "I"
-    Caption: 
-      size: 10
-      style: "I"
-    Text: 
-      size: 11
-      style: ""
-    List-item: 
-      size: 11
-      style: ""
-    Footnote: 
-      size: 8
-      style: ""
+    Title: "hebo"
+    Section-header: "hebo"
+    Caption: "heit"
+    Figure-caption: "heit"
+    Table-caption: "heit"
+    Table-footnote: "heit"
+    Formula-caption: "heit"
+    Text: "helv"
+    Footnote: "helv"

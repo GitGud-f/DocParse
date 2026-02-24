@@ -1,6 +1,7 @@
+PyMuPDF
 ipykernel
-streamlit
-streamlit_drawable_canvas
+streamlit==1.41.0
+streamlit-drawable-canvas==0.9.3
 
 numpy<2.0
 opencv-python
@@ -20,4 +21,4 @@ pytesseract
 python-Levenshtein
 pyspellchecker
 
-fpdf2
+# fpdf2

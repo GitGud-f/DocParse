@@ -4,6 +4,7 @@ import numpy as np
 import os
 import imutils
 import shutil
+import fitz
 import pandas as pd
 from streamlit_drawable_canvas import st_canvas
 from PIL import Image
@@ -16,9 +17,13 @@ OCR_AVAILABLE = False
 PDF_AVAILABLE = False
 
 try:
+    # print("Try to  import inference")
     from src.segmentation.inference import LayoutAnalyzer
     YOLO_AVAILABLE = True
-except ImportError: pass
+except ImportError as e: 
+    print("Failed to import LayoutAnalyzer. Phase II will be unavailable.")
+    print("Error: ", e)
+    pass
 
 try:
     from src.ocr.engine import OCREngine
@@ -348,10 +353,33 @@ def main():
                         elif item['type'] == 'table':
                             st.info(f"🖼️ Image saved at: `{item['content']}`")
                             if item.get('table_data') and len(item['table_data']) > 1:
+                                t_data = item['table_data']
+                                num_cols = max(len(r) for r in t_data)
+                                
+                                # --- 1. CLEANUP: Remove completely empty columns ---
+                                cols_to_keep = []
+                                for c_idx in range(num_cols):
+                                    # Keep column if ANY row has non-empty text at this index
+                                    col_has_text = any(
+                                        c_idx < len(row) and str(row[c_idx]).strip() != "" 
+                                        for row in t_data
+                                    )
+                                    if col_has_text:
+                                        cols_to_keep.append(c_idx)
+                                        
+                                # Apply the filter to all rows
+                                cleaned_table = []
+                                for row in t_data:
+                                    cleaned_row = [row[i] for i in cols_to_keep if i < len(row)]
+                                    cleaned_table.append(cleaned_row)
+                                
+                                # Overwrite the item data so the PDF Builder gets the cleaned table too!
+                                item['table_data'] = cleaned_table
+                                
                                 st.success("✅ Table Structure Parsed Successfully!")
                                 
                                 # --- SAFE DATAFRAME CREATION ---
-                                raw_headers = item['table_data'][0]
+                                raw_headers = cleaned_table[0]
                                 safe_headers = []
                                 # Make sure headers are unique and not empty
                                 for c_idx, h in enumerate(raw_headers):
@@ -383,7 +411,7 @@ def main():
     if not PDF_AVAILABLE:
         st.warning("PDF Builder module not found.")
     elif st.session_state['ocr_results'] is None:
-        st.info("Run Phase III first to generate data for the PDF.")
+        st.info(" ⚠️ Run Phase III first to generate data for the PDF.")
     else:
         col_pdf1, col_pdf2 = st.columns([2, 1])
         col_pdf1.markdown("""This step maps the extracted content onto a new A4 canvas, 
