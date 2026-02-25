@@ -77,8 +77,8 @@ class OCREngine:
 
             if len(upscaled.shape) == 2:
                 _, upscaled = cv2.threshold(upscaled, 127, 255, cv2.THRESH_BINARY)
-            return upscaled
-        return crop_img
+            return upscaled, self.upscale_factor 
+        return crop_img, 1.0
 
     def clean_text(self, text, label):
         """
@@ -143,6 +143,7 @@ class OCREngine:
             content = ""
             hidden_text = ""
             content_type = None
+            scale_applied = 1.0
             
 
             custom_config = self.get_tesseract_config(label)
@@ -153,13 +154,20 @@ class OCREngine:
                 crop_bin, padded_bbox = self.get_padded_crop(binary_image, bbox)
                 
 
-                crop_bin = self.upscale_crop_if_needed(crop_bin)
+                crop_bin, scale_applied = self.upscale_crop_if_needed(crop_bin)
                 
                 try:
-                    raw_text = pytesseract.image_to_string(crop_bin, config=custom_config, lang=self.lang)
-                    content = self.clean_text(raw_text, label)
+                    # raw_text = pytesseract.image_to_string(crop_bin, config=custom_config, lang=self.lang)
+                    data = pytesseract.image_to_data(crop_bin, config=custom_config, lang=self.lang, output_type=pytesseract.Output.DICT)
+                    lines_structure = self._structure_ocr_data(data)
+                    
+                    # content = self.clean_text(raw_text, label)
+                    content = " ".join([line['text'] for line in lines_structure])
+                    content = self.clean_text(content, label)
                 except Exception as e:
                     print(f"OCR Error on element {i} ({label}): {e}")
+                    lines_structure = []
+                    content = ""
 
             elif label == "Table":
                 content_type = "table"
@@ -177,7 +185,7 @@ class OCREngine:
                 
                 # Callback function to handle cell OCR logic
                 def cell_ocr_callback(cell_img):
-                    upscaled = self.upscale_crop_if_needed(cell_img)
+                    upscaled, _ = self.upscale_crop_if_needed(cell_img)
                     # PSM 6 or 7 is best for single cells
                     cell_config = self.get_tesseract_config("Text") 
                     raw_text = pytesseract.image_to_string(upscaled, config=cell_config, lang=self.lang)
@@ -187,7 +195,7 @@ class OCREngine:
                 
                 # If grid parsing fails (e.g., borderless table), fallback to hidden text
                 if not table_data:
-                    crop_bin_hidden = self.upscale_crop_if_needed(crop_bin)
+                    crop_bin_hidden, _ = self.upscale_crop_if_needed(crop_bin)
                     try:
                         raw_hidden = pytesseract.image_to_string(crop_bin_hidden, config=custom_config, lang=self.lang)
                         hidden_text = self.clean_text(raw_hidden, label)
@@ -210,7 +218,7 @@ class OCREngine:
 
 
                 crop_bin_hidden, _ = self.get_padded_crop(binary_image, bbox)
-                crop_bin_hidden = self.upscale_crop_if_needed(crop_bin_hidden)
+                crop_bin_hidden, _ = self.upscale_crop_if_needed(crop_bin_hidden)
                 
                 try:
                     raw_hidden = pytesseract.image_to_string(crop_bin_hidden, config=custom_config, lang=self.lang)
@@ -227,6 +235,8 @@ class OCREngine:
                 "type": content_type,
                 "bbox": padded_bbox,
                 "content": content,
+                "lines_structure": lines_structure if content_type == "text" else None,
+                "scale_factor": scale_applied,
                 "hidden_text": hidden_text, 
                 "table_data": table_data if label == "Table" else None, # NEW
                 "confidence": conf
@@ -235,6 +245,51 @@ class OCREngine:
 
         return processed_data
 
+    def _structure_ocr_data(self, data):
+        """
+        Parses raw Tesseract data into a list of lines with relative coordinates.
+        """
+        n_boxes = len(data['level'])
+        lines = {} # Key: (block_num, par_num, line_num)
+        
+        for i in range(n_boxes):
+            text = data['text'][i].strip()
+            if not text: continue
+            
+            # Key to group words into lines
+            key = (data['block_num'][i], data['par_num'][i], data['line_num'][i])
+            
+            if key not in lines:
+                lines[key] = {
+                    'text': [],
+                    'x': data['left'][i],
+                    'y': data['top'][i],
+                    'w': data['width'][i],
+                    'h': data['height'][i]
+                }
+            else:
+                # Update line width to include this new word
+                curr = lines[key]
+                new_right = data['left'][i] + data['width'][i]
+                curr['w'] = new_right - curr['x']
+                curr['h'] = max(curr['h'], data['height'][i]) # Max height in line
+                
+            lines[key]['text'].append(text)
+            
+        # Convert dict to clean list
+        structured_lines = []
+        for key in sorted(lines.keys()):
+            entry = lines[key]
+            structured_lines.append({
+                'text': " ".join(entry['text']),
+                'x': entry['x'], # Relative to the crop
+                'y': entry['y'], # Relative to the crop
+                'w': entry['w'],
+                'h': entry['h']
+            })
+            
+        return structured_lines
+    
     def save_to_json(self, data, filepath):
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=4, ensure_ascii=False)

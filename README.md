@@ -1,150 +1,126 @@
-# DocPars: Intelligent Document Reconstruction
+# DocParse: Intelligent Document Reconstruction Pipeline
 
-![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
-![OpenCV](https://img.shields.io/badge/OpenCV-Computer%20Vision-green)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Framework](https://img.shields.io/badge/Framework-PyTorch-orange?logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![CV](https://img.shields.io/badge/Library-OpenCV-green?logo=opencv&logoColor=white)](https://opencv.org/)
+[![Status](https://img.shields.io/badge/Status-Prototype-yellow)]()
 
-**DocPars** is a hybrid Computer Vision pipeline designed to transform high-variance smartphone document photos into structured, digital PDFs. It bridges the gap between raw pixel data and semantic document understanding using a combination of classical geometric processing and Deep Learning.
 
----
-
-## Project Overview
-
-Taking a photo of a document is easy; making it useful is hard. Smartphone photos suffer from perspective distortion, uneven lighting, shadows, and noise. This project implements a 4-phase pipeline to solving these issues:
-
-1.  **Geometric Correction:** Rectifying the image to a top-down view.
-2.  **Illumination Normalization:** removing shadows and enhancing contrast.
-3.  **Layout Analysis (DL):** Understanding the structure (Headers, Tables, Figures).
-4.  **Reconstruction:** Generating a searchable PDF that matches the original layout.
+**DocParse** is a hybrid computer vision pipeline designed to transform high-variance smartphone photos of documents into structured, searchable, and geometrically corrected PDF files. It bridges the gap between raw pixel data and digital document reconstruction using a combination of classical geometric computer vision and state-of-the-art Deep Learning models.
 
 ---
 
-## 🛠️ Tech Stack
+## 🚀 Key Features
 
-*   **Core:** Python, OpenCV, NumPy
-*   **UI:** Streamlit (for interactive debugging and demo)
-*   **Configuration:** YAML
-*   **Evaluation:** Shapely (IoU), Levenshtein (OCR Accuracy)
-*   **Planned (Phase II+):** PyTorch, YOLOv8
+### 📐 Phase I: Geometric Correction (Classical CV)
+- **Automatic Corner Detection:** Utilizes multi-channel edge detection and morphological processing to find document boundaries.
+- **Sub-pixel Refinement:** Refines corner coordinates to decimal precision for superior rectification.
+- **Interactive Correction:** A Streamlit-based UI allows users to manually adjust corners if automatic detection fails.
+- **Illumination Normalization:** Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) and adaptive thresholding to remove shadows and uneven lighting.
+
+### 🧠 Phase II: Semantic Layout Analysis (Deep Learning)
+- **YOLO-DocLayNet Inference:** Utilize **YOLOv10** Fine-tuned on the **DocLayNet** dataset to segment the document into semantic regions:
+  - `Title`, `Text`, `Table`, `Figure`, `Table Caption`, `Table Footer`, `Figure Caption`, `Formula`, `Formula Caption`.
+- **Reading Order Resolution:** Implements the **Recursive XY-Cut algorithm** to sort detected elements into a natural reading order (top-down, left-right), handling multi-column layouts correctly.
+
+### 📝 Phase III: Hybrid OCR & Content Extraction
+- **Context-Aware OCR:** Dynamically adjusts Tesseract Page Segmentation Modes (PSM) based on the semantic label (e.g., treating a "Title" differently from a "Table Cell").
+- **Table Structure Parsing:** Uses morphological projection profiles to reconstruct the grid structure of tables, converting them into editable data rather than static images.
+- **Data Cleaning:** Includes heuristic post-processing and spellchecking to correct common OCR errors (e.g., `0` vs `O`).
+
+### 📄 Phase IV: PDF Synthesis
+- **Layout Preservation:** Reconstructs the document on a digital canvas using the detected coordinates.
+- **Searchable Assets:** Embeds a hidden text layer behind images and tables, ensuring the entire PDF is searchable (Ctrl+F compatible).
+- **Dynamic Typography:** Automatically scales font sizes to fit the text within the original bounding boxes.
 
 ---
 
-## 📂 Project Structure
+## 🛠️ Project Structure
 
 ```text
 DocParse/
-├── config.yaml             # Central configuration for thresholds & paths
-├── app.py                  # Streamlit Dashboard (UI)
-├── main.py                 # CLI Entry point for batch processing
-├── src/
-│   ├── scanner/
-│   │   ├── geometry.py     # Canny, Contours, & Perspective Transform
-│   │   ├── hough.py        # Hough Line Transform logic
-│   │   └── filters.py      # Adaptive Thresholding & CLAHE
-│   ├── evaluation/         # Metrics (IoU, CER, WER)
-│   └── utils/              # Config loader & Image helpers
 ├── data/
-│   ├── raw/                # Input images
-│   ├── processed/          # Phase I outputs
-│   └── benchmark/          # Golden dataset for evaluation
+│   ├── raw/                  # Input images
+│   └── output/               # Generated PDFs and debug visuals
+├── models/
+│   └── weights/              # YOLOv10 .pt checkpoints
+├── src/
+│   ├── scanner/              # Phase I: Geometry, Hough, Filters
+│   ├── segmentation/         # Phase II: Inference, XY-Cut Sorting
+│   ├── ocr/                  # Phase III: Tesseract Engine, Table Parser
+│   ├── synthesis/            # Phase IV: PDF Generation (PyMuPDF)
+│   └── utils/                # Config loader, image helpers
+├── app.py                    # Streamlit Interactive Dashboard
+├── config.yaml               # Centralized configuration
+└── requirements.txt          # Python dependencies
 ```
 
 ---
 
-## 💻 Installation & Setup
+## 💻 Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/GitGud-f/DocParse.git
-    cd DocParse
-    ```
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/GitGud-f/DocParse.git
+   cd DocParse
+   ```
 
-2.  **Install Python Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+2. **Install Dependencies**
+   It is recommended to use a virtual environment.
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-<!-- 3.  **Install Tesseract OCR Engine:**
-    *   *Windows:* Download [installer](https://github.com/UB-Mannheim/tesseract/wiki). Add to PATH.
-    *   *Linux:* `sudo apt install tesseract-ocr` -->
+3. **Install Tesseract OCR**
+   *   **Linux:** `sudo apt-get install tesseract-ocr`
+   *   **Windows:** Download the installer from UB-Mannheim and set the path in `config.yaml`.
+
+4. **Model Weights**
+   Download the YOLO weights ([`doclayout_yolo_docstructbench_imgsz1024.pt`](https://huggingface.co/juliozhao/DocLayout-YOLO-DocStructBench/resolve/main/doclayout_yolo_docstructbench_imgsz1024.pt)) and place them in `models/weights/`.
 
 ---
 
-## Usage
+## ⚡ Usage
 
-### 1. Interactive UI (Recommended for Demo)
-Launch the Streamlit dashboard to visualize every step of Phase I (Edge detection, Warping, Thresholding).
+### Running the Interactive Web App
+The best way to experience the pipeline is via the Streamlit dashboard.
+
 ```bash
 streamlit run app.py
 ```
-*Features:* Switch between Blob/Hough methods, tune Canny thresholds in real-time, view Debug masks.
 
-### 2. Batch Processing
-Process all images in `data/raw/` and save results to `data/processed/`.
-```bash
-python main.py
+1.  **Sidebar:** Select "Upload New Image" or choose a sample.
+2.  **Phase I:** Verify the detected red corners. Drag them if necessary.
+3.  **Phase II:** Click "Run Deep Layout Analysis" to see segmentation boxes.
+4.  **Phase III:** Click "Extract Text & Data" to perform OCR.
+5.  **Phase IV:** Click "Download PDF" to get the reconstructed document.
+
+---
+
+<!-- ## 📊 Pipeline Visualization
+
+| 1. Input Image | 2. Geometric Correction | 3. Semantic Segmentation | 4. Final PDF |
+| :---: | :---: | :---: | :---: |
+| *(Raw Photo)* | *(Warped & Binarized)* | *(YOLO Detections)* | *(Reconstructed)* |
+| ![Input](https://via.placeholder.com/150) | ![Warped](https://via.placeholder.com/150) | ![Seg](https://via.placeholder.com/150) | ![PDF](https://via.placeholder.com/150) |
+
+--- -->
+
+## ⚙️ Configuration
+Modify `config.yaml` to tune parameters:
+
+```yaml
+preprocessing:
+  resize_height: 1024
+
+segmentation:
+  model:
+    conf_threshold: 0.45
+
+ocr:
+  lang: "eng"
+  postprocessing:
+    enable_spellcheck: True
 ```
-
-### 3. Evaluation (Benchmarking)
-Run the geometric evaluation against Ground Truth data.
-```bash
-python evaluate_phase1.py
-```
-
----
-
-## Current Progress (Phase I)
-
-### Features Implemented
-*   **Robust Corner Detection:**
-    *   *Method A (Blob):* Hybrid edge detection (Gray + Saturation Channel) + Morphological closing + Contour approximation.
-    *   *Method B (Hough):* Probabilistic Hough Transform + Line Clustering + Intersection calculation.
-*   **Sub-pixel Refinement:** `cv2.cornerSubPix` implemented for high-precision homography.
-*   **Perspective Transform:** 4-point transform to rectify document skew.
-*   **Illumination Correction:**
-    *   **CLAHE** (Contrast Limited Adaptive Histogram Equalization) for texture preservation.
-    *   **Adaptive Thresholding** for binarization (OCR prep).
-*   **Evaluation Module:** Automated IoU (Geometric)
-
----
-
-## Roadmap & TODOs
-
-### Phase I: Preprocessing (Optimization)
-- [x] Implement Basic Geometric Correction.
-- [x] Implement Hybrid Edge Detection (Sat + Gray).
-- [x] Create Evaluation Suite (IoU & CER).
-- [ ] **TODO:** Implement "Document vs Table" detection logic to avoid cropping to internal tables.
-
-### Phase II: Layout Analysis (Deep Learning)
-- [ ] **TODO:** Select dataset (DocBank or PubLayNet).
-- [ ] **TODO:** Generate synthetic training data using Phase I pipeline.
-- [ ] **TODO:** Train YOLOv8-seg or Mask-RCNN to detect:
-    - `Header`, `Footer`, `Paragraph`, `Image`, `Table`.
-- [ ] **TODO:** Implement inference script in `src/segmentation/`.
-
-### Phase III: OCR Integration
-- [ ] **TODO:** Integrate Tesseract (or PaddleOCR) for text extraction.
-- [ ] **TODO:** Implement logic to crop regions based on Phase II masks.
-- [ ] **TODO:** Add Table Structure Recognition (Row/Col detection).
-
-### Phase IV: Synthesis
-- [ ] **TODO:** Create PDF generation module (`reportlab` or `fpdf`).
-- [ ] **TODO:** Map OCR text to original coordinates in the PDF.
-
----
-
-## Evaluation Results (Preliminary)
-
-*   **Geometric Accuracy (IoU):** 89.4% (on internal test set of 20 images).
-*   **OCR Legibility (CER):** TODO.
-
----
-
-## Contributing
-1.  Fork the Project
-2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4.  Push to the Branch (`git push origin feature/AmazingFeature`)
-5.  Open a Pull Request
 
 ---

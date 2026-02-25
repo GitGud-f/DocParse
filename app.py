@@ -356,10 +356,9 @@ def main():
                                 t_data = item['table_data']
                                 num_cols = max(len(r) for r in t_data)
                                 
-                                # --- 1. CLEANUP: Remove completely empty columns ---
                                 cols_to_keep = []
                                 for c_idx in range(num_cols):
-                                    # Keep column if ANY row has non-empty text at this index
+
                                     col_has_text = any(
                                         c_idx < len(row) and str(row[c_idx]).strip() != "" 
                                         for row in t_data
@@ -367,26 +366,24 @@ def main():
                                     if col_has_text:
                                         cols_to_keep.append(c_idx)
                                         
-                                # Apply the filter to all rows
+
                                 cleaned_table = []
                                 for row in t_data:
                                     cleaned_row = [row[i] for i in cols_to_keep if i < len(row)]
                                     cleaned_table.append(cleaned_row)
                                 
-                                # Overwrite the item data so the PDF Builder gets the cleaned table too!
+
                                 item['table_data'] = cleaned_table
                                 
                                 st.success("✅ Table Structure Parsed Successfully!")
                                 
-                                # --- SAFE DATAFRAME CREATION ---
                                 raw_headers = cleaned_table[0]
                                 safe_headers = []
-                                # Make sure headers are unique and not empty
                                 for c_idx, h in enumerate(raw_headers):
                                     h_clean = str(h).strip()
                                     if not h_clean:
                                         h_clean = f"Col_{c_idx+1}"
-                                    # Handle duplicates (e.g., two columns named "Value")
+
                                     if h_clean in safe_headers:
                                         h_clean = f"{h_clean}_{c_idx+1}"
                                     safe_headers.append(h_clean)

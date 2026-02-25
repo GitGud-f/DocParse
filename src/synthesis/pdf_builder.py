@@ -1,6 +1,8 @@
 """
-Module: src/synthesis/pdf_builder.py
+Module: pdf_builder
+
 Description: Advanced PDF Reconstruction using PyMuPDF.
+
 Features: 
 - Dynamic Font Scaling with Overflow Protection.
 - Native Table Drawing from 2D Array Data.
@@ -8,6 +10,7 @@ Features:
 
 import os
 import fitz  # PyMuPDF
+import numpy as np
 from src.utils.config import cfg
 
 class PDFReconstructor:
@@ -86,11 +89,71 @@ class PDFReconstructor:
             # 1. TEXT ELEMENTS
             # ==========================================
             if content_type == "text" and content:
-                # Use PyMuPDF's exact keyword: fontname
                 target_fontname = self.styles.get(label, "helv")
-                optimal_size = self._calculate_dynamic_font_size(content, box_height_pt)
+                lines = element.get('lines_structure', [])
+                ocr_scale = element.get('scale_factor', 1.0) 
+                if lines and len(lines) > 0:
+                    line_heights = [l['h'] for l in lines]
+                    median_h_px = np.median(line_heights)
+                    
+                    normalized_h = median_h_px / ocr_scale
+                    uniform_font_size = (normalized_h * scale) * 0.85
+                    
+                    uniform_font_size = max(6, min(uniform_font_size, 24))
+                    
+                    # ascender_offset = uniform_font_size * 0.8
+                     
+                    # ocr_max_w = max([l['x'] + l['w'] for l in lines])
+                    # ocr_max_y = max([l['y'] + l['h'] for l in lines])
+                        
+                    # block_w_px = x2_px - x1_px
+                    # block_h_px = y2_px - y1_px
+                    
+                    # scale_x_ocr = block_w_px / max(ocr_max_w, 1)
+                    # scale_y_ocr = block_h_px / max(ocr_max_y, 1)
+                    
+                    for line in lines:
+                        text = line['text']
+                        # Map relative crop coords -> absolute PDF coords
+                        # l_x = x0 + (line['x'] * scale_x_ocr * scale)
+                        # l_y = y0 + (line['y'] * scale_y_ocr * scale)
+                        # l_w = line['w'] * scale_x_ocr * scale
+                        # l_h = line['h'] * scale_y_ocr * scale
+                        
+                        rel_x = (line['x'] / ocr_scale) * scale
+                        rel_y = (line['y'] / ocr_scale) * scale
+                        
+                        final_x = x0 + rel_x
+                        final_y = y0 + rel_y
+                        
+                        insert_pt = (final_x, final_y + uniform_font_size)
+                        
+                        page.insert_text(
+                            insert_pt, 
+                            text, 
+                            fontsize=uniform_font_size, 
+                            fontname=target_fontname
+                        )
+                        # Define the rect for this specific line
+                        # line_rect = fitz.Rect(l_x, l_y, l_x + l_w + 50, l_y + l_h)
+                        
+                        # Calculate font size based on LINE height, not block height
+                        # This is much more accurate
+                        # font_size = l_h * 0.75 
+                        # font_size = max(6, min(font_size, 14)) # Clamp reasonable sizes
+                        
+                        # Insert line
+                        # page.insert_text((l_x, l_y + font_size), text, fontsize=font_size, fontname=target_fontname)
+                      
+                elif element['content']:
+                    rect = fitz.Rect(x0, y0, x2_px * scale, y2_px * scale)
+                    optimal_size = self._calculate_dynamic_font_size(element['content'], rect.height)
+                    self._safe_insert_text(page, rect, element['content'], optimal_size, target_fontname)
+
+                    
+                # optimal_size = self._calculate_dynamic_font_size(content, box_height_pt)
                 
-                self._safe_insert_text(page, rect, content, optimal_size, target_fontname, align=0)
+                # self._safe_insert_text(page, rect, content, optimal_size, target_fontname, align=0)
 
             # ==========================================
             # 2. TABLES (Reconstructed from Data)
@@ -119,7 +182,7 @@ class PDFReconstructor:
                                 if cell_text:
                                     pad = 2
                                     text_rect = fitz.Rect(c_x0 + pad, c_y0 + pad, c_x1 - pad, c_y1 - pad)
-                                    c_size = self._calculate_dynamic_font_size(cell_text, text_rect.height)
+                                    c_size = self._calculate_dynamic_font_size(cell_text, text_rect.height *1.2)
                                     
                                     # Passing fontname="helv" cleanly
                                     self._safe_insert_text(page, text_rect, cell_text, c_size, "helv", align=1)

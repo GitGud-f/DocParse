@@ -11,14 +11,9 @@ tqdm
 pyyaml
 imutils
 
-# torch
-# torchvision
 doclayout_yolo
-# datasets
 
 shapely 
 pytesseract 
 python-Levenshtein
 pyspellchecker
-
-# fpdf2
