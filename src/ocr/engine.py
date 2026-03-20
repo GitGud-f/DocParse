@@ -104,7 +104,7 @@ class OCREngine:
             corrected_words = []
             for word in words:
 
-                if word.isalpha():
+                if word.isalpha() and not word.isupper():
                     corr = self.spell.correction(word)
                     corrected_words.append(corr if corr else word)
                 else:

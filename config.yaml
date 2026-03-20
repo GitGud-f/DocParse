@@ -108,7 +108,7 @@ ocr:
   # Define how to handle specific classes
   actions:
     ocr: ["Text", "Title", "Table-caption", "Table-footnote", "Figure-caption", "Formula-caption"]
-    image: ["Picture", "Formula"]
+    image: ["Figure", "Formula"]
 
 synthesis:
   output_dir: "data/output"

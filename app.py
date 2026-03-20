@@ -231,7 +231,7 @@ def main():
     init_session_state()
 
     st.title("📄 Intelligent Document Reconstruction")
-    st.caption("Computer Vision Course Project - HIAST | Phases I & II")
+    st.caption("Computer Vision Course Project - HIAST")
 
     image, method, show_debug = render_sidebar()
 
